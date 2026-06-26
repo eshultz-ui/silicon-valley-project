@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crew Dispatch — Route Optimizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root{
+    --ink:#0d1117; --panel:#141b24; --panel-2:#1b242f; --raise:#222e3b;
+    --line:#2a3644; --line-soft:#212c38;
+    --text:#e8eef4; --muted:#8a98a8; --muted-2:#6b7889;
+    --hi:#ffb02e; --hi-deep:#ff8a00; --hi-glow:rgba(255,176,46,.16);
+    --good:#3ddc97; --bad:#ff5d5d;
+    --r1:#ffb02e; --r2:#37c6dd; --r3:#e85fb0; --r4:#9bd14a; --r5:#9b8cff;
+    --r6:#ff6b4a; --r7:#2dd4a7; --r8:#f4d03f; --r9:#5aa9ff; --r10:#ff8fb0;
+    --r11:#c0e85f; --r12:#b98cff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--ink); color:var(--text);
+    font-family:"Inter",system-ui,sans-serif; font-size:14px; line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{display:grid; grid-template-columns:392px 1fr; height:100vh; overflow:hidden}
+
+  /* ---------- Sidebar ---------- */
+  .rail{
+    background:var(--panel); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .brand{
+    padding:18px 20px 16px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:12px; flex:0 0 auto;
+  }
+  .brand .mark{
+    width:34px;height:34px;border-radius:8px;flex:0 0 auto;
+    background:linear-gradient(150deg,var(--hi),var(--hi-deep));
+    display:grid;place-items:center; box-shadow:0 0 0 1px rgba(255,176,46,.25), 0 6px 18px -6px var(--hi-glow);
+  }
+  .brand .mark svg{width:20px;height:20px}
+  .brand h1{
+    font-family:"Archivo",sans-serif; font-weight:800; font-size:15px;
+    letter-spacing:.06em; text-transform:uppercase; margin:0; line-height:1.05;
+  }
+  .brand .sub{font-size:11px; color:var(--muted-2); letter-spacing:.14em; text-transform:uppercase; margin-top:3px}
+
+  .scroll{overflow-y:auto; min-height:0; flex:1 1 auto; scrollbar-width:thin; scrollbar-color:var(--line) transparent}
+  .scroll::-webkit-scrollbar{width:9px}
+  .scroll::-webkit-scrollbar-thumb{background:var(--line); border-radius:9px; border:2px solid var(--panel)}
+
+  .sec{padding:16px 20px; border-bottom:1px solid var(--line-soft)}
+  .sec h2{
+    font-family:"Archivo",sans-serif; font-size:11px; font-weight:700;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
+    margin:0 0 12px; display:flex; align-items:center; gap:8px;
+  }
+  .sec h2 .tag{margin-left:auto; font-family:"JetBrains Mono",monospace; color:var(--hi); font-size:11px; letter-spacing:.04em}
+
+  label.fld{display:block; margin-bottom:11px}
+  label.fld:last-child{margin-bottom:0}
+  .fld > span{display:block; font-size:11px; color:var(--muted); letter-spacing:.04em; margin-bottom:5px}
+  .inp{
+    width:100%; background:var(--ink); border:1px solid var(--line); color:var(--text);
+    border-radius:7px; padding:9px 11px; font-size:13.5px; font-family:inherit; outline:none;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .inp::placeholder{color:var(--muted-2)}
+  .inp:focus{border-color:var(--hi); box-shadow:0 0 0 3px var(--hi-glow)}
+  .mono{font-family:"JetBrains Mono",monospace}
+
+  .row{display:flex; gap:8px}
+  .row .inp{min-width:0}
+  .grow{flex:1 1 auto}
+
+  .btn{
+    font-family:"Archivo",sans-serif; font-weight:600; letter-spacing:.03em;
+    border:1px solid var(--line); background:var(--panel-2); color:var(--text);
+    border-radius:7px; padding:9px 13px; cursor:pointer; font-size:12.5px;
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    transition:background .15s,border-color .15s,transform .05s; white-space:nowrap;
+  }
+  .btn:hover{background:var(--raise); border-color:#34455a}
+  .btn:active{transform:translateY(1px)}
+  .btn[disabled]{opacity:.45; cursor:not-allowed}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:7px 10px; font-size:11.5px}
+  .btn.icon{padding:8px; width:34px}
+  .btn.amber{background:linear-gradient(150deg,var(--hi),var(--hi-deep)); color:#241600; border-color:transparent; font-weight:700}
+  .btn.amber:hover{filter:brightness(1.05)}
+  .btn.full{width:100%}
+
+  .seg{display:flex; background:var(--ink); border:1px solid var(--line); border-radius:8px; padding:3px; gap:3px}
+  .seg button{
+    flex:1; border:0; background:transparent; color:var(--muted); cursor:pointer;
+    font-family:"Archivo",sans-serif; font-weight:600; font-size:11.5px; letter-spacing:.05em;
+    padding:7px 6px; border-radius:6px; text-transform:uppercase; transition:all .15s;
+  }
+  .seg button.on{background:var(--raise); color:var(--text); box-shadow:inset 0 0 0 1px var(--line)}
+  .seg button.on[data-obj], .seg button.on[data-bal]{color:var(--hi)}
+
+  .hint{font-size:11px; color:var(--muted-2); margin-top:8px; line-height:1.5}
+
+  label.chk{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); cursor:pointer; margin-top:4px}
+  label.chk input{accent-color:var(--hi); width:15px; height:15px; cursor:pointer}
+  label.chk span{margin:0}
+
+  .banner{
+    background:rgba(255,93,93,.1); border:1px solid rgba(255,93,93,.4); color:#ffd9d9;
+    border-radius:8px; padding:10px 12px; font-size:12px; line-height:1.5; margin-bottom:11px;
+  }
+  .banner b{color:#fff}
+  .banner.ok{background:rgba(61,220,151,.1); border-color:rgba(61,220,151,.4); color:#caffe7}
+  .banner.ok b{color:#fff}
+
+  /* Stop list */
+  .pt{
+    display:flex; align-items:center; gap:10px; padding:9px 10px; border:1px solid var(--line-soft);
+    border-radius:8px; background:var(--panel-2); margin-bottom:7px;
+  }
+  .pt .pin{
+    width:24px;height:24px;border-radius:6px;flex:0 0 auto; display:grid;place-items:center;
+    font-family:"JetBrains Mono",monospace; font-size:11px; font-weight:700; color:#0d1117;
+  }
+  .pt.base .pin{background:var(--text)}
+  .pt .body{min-width:0; flex:1 1 auto}
+  .pt .nm{font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .pt .co{font-family:"JetBrains Mono",monospace; font-size:10.5px; color:var(--muted-2)}
+  .pt .x{
+    border:0;background:transparent;color:var(--muted-2);cursor:pointer;padding:4px;border-radius:5px;flex:0 0 auto;
+    line-height:0;
+  }
+  .pt .x:hover{color:var(--bad); background:rgba(255,93,93,.1)}
+  .empty{font-size:12px;color:var(--muted-2); padding:10px 2px; text-align:center}
+
+  /* bulk paste */
+  details.bulk{margin-bottom:10px; border:1px solid var(--line-soft); border-radius:8px; background:var(--ink); overflow:hidden}
+  details.bulk summary{
+    cursor:pointer; list-style:none; padding:9px 12px; font-family:"Archivo",sans-serif;
+    font-size:11.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--muted);
+    display:flex; align-items:center; gap:8px; user-select:none;
+  }
+  details.bulk summary::-webkit-details-marker{display:none}
+  details.bulk summary::before{content:"+"; font-family:"JetBrains Mono",monospace; color:var(--hi); font-weight:700; font-size:14px}
+  details.bulk[open] summary::before{content:"–"}
+  details.bulk summary:hover{color:var(--text)}
+  details.bulk > *:not(summary){margin:0 12px 12px}
+  details.bulk textarea{resize:vertical; min-height:96px; line-height:1.5; font-family:"JetBrains Mono",monospace; font-size:12px}
+
+  /* ---------- Main / map ---------- */
+  .main{position:relative; min-width:0}
+  #map{position:absolute; inset:0; background:#0a0e13}
+  .leaflet-container{background:#0a0e13; font-family:inherit}
+  .leaflet-control-attribution{background:rgba(13,17,23,.7)!important; color:var(--muted-2)!important}
+  .leaflet-control-attribution a{color:var(--muted)!important}
+  .leaflet-bar a{background:var(--panel-2)!important; color:var(--text)!important; border-color:var(--line)!important}
+  .leaflet-bar a:hover{background:var(--raise)!important}
+
+  /* readout bar over map */
+  .readout{
+    position:absolute; top:16px; left:16px; right:16px; z-index:500;
+    background:linear-gradient(180deg, rgba(20,27,36,.96), rgba(17,22,30,.96));
+    border:1px solid var(--line); border-radius:12px; backdrop-filter:blur(8px);
+    display:grid; grid-template-columns:repeat(6,1fr); overflow:hidden;
+    box-shadow:0 14px 40px -16px rgba(0,0,0,.7);
+  }
+  .readout.idle{display:none}
+  .metric{padding:11px 14px; border-right:1px solid var(--line-soft); min-width:0}
+  .metric:last-child{border-right:0}
+  .metric .k{font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted-2); white-space:nowrap}
+  .metric .v{font-family:"JetBrains Mono",monospace; font-weight:700; font-size:19px; margin-top:3px; line-height:1; white-space:nowrap}
+  .metric .v small{font-size:11px; color:var(--muted); font-weight:500; margin-left:2px}
+  .metric.accent .v{color:var(--hi)}
+  .metric.total{background:var(--hi-glow)}
+  .metric.total .v{color:var(--hi)}
+
+  /* status toast */
+  .toast{
+    position:absolute; left:50%; bottom:18px; transform:translateX(-50%); z-index:600;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:10px 16px; border-radius:999px; font-size:12.5px; display:none; align-items:center; gap:10px;
+    box-shadow:0 10px 30px -10px rgba(0,0,0,.8); max-width:90%;
+  }
+  .toast.show{display:inline-flex}
+  .toast.err{border-color:rgba(255,93,93,.5); color:#ffd9d9}
+  .spin{width:14px;height:14px;border:2px solid var(--line); border-top-color:var(--hi); border-radius:50%; animation:sp .7s linear infinite; flex:0 0 auto}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* mode banner for map clicking */
+  .modebar{
+    position:absolute; top:74px; left:16px; z-index:500; display:none; align-items:center; gap:10px;
+    background:var(--hi); color:#241600; padding:7px 12px; border-radius:8px; font-size:12px; font-weight:600;
+    box-shadow:0 8px 24px -10px rgba(0,0,0,.6);
+  }
+  .modebar.show{display:flex}
+  .modebar button{border:0;background:rgba(0,0,0,.18);color:#241600;border-radius:5px;cursor:pointer;padding:3px 8px;font-weight:700}
+
+  /* Route ticket cards */
+  .tickets{padding:16px 20px}
+  .trafsum{font-size:11.5px; color:var(--muted); background:var(--panel-2); border:1px solid var(--line-soft);
+    border-radius:8px; padding:8px 11px; margin-bottom:11px; line-height:1.4}
+  .trafsum b{color:var(--hi); font-family:"JetBrains Mono",monospace}
+  .trafsum .est{color:var(--hi); font-weight:700}
+  .ticket li.more{color:var(--muted-2); font-style:italic; border-top:1px dashed var(--line-soft)}
+  .ticket li.more::before{content:"⋯"; background:transparent; border:0; color:var(--muted-2)}
+  .ticket{
+    position:relative; background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    padding:13px 14px 13px 16px; margin-bottom:11px; overflow:hidden;
+  }
+  .ticket::before{content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--rc)}
+  .ticket .th{display:flex; align-items:center; gap:9px; margin-bottom:9px}
+  .ticket .badge{
+    font-family:"Archivo",sans-serif; font-weight:800; font-size:12px; letter-spacing:.04em;
+    color:#0d1117; background:var(--rc); padding:3px 9px; border-radius:5px;
+  }
+  .ticket .th .cnt{font-size:11.5px; color:var(--muted); margin-left:auto; font-family:"JetBrains Mono",monospace}
+  .ticket .stats{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px}
+  .ticket .st{font-family:"JetBrains Mono",monospace; font-size:12px}
+  .ticket .st b{color:var(--text); font-weight:700}
+  .ticket .st span{color:var(--muted-2); font-size:10px; letter-spacing:.08em; text-transform:uppercase; display:block; margin-bottom:1px}
+  .ticket ol{margin:0; padding:0; list-style:none; counter-reset:s}
+  .ticket li{
+    font-size:12.5px; padding:5px 0 5px 26px; position:relative; color:var(--text);
+    border-top:1px dashed var(--line-soft);
+  }
+  .ticket li::before{
+    counter-increment:s; content:counter(s); position:absolute; left:0; top:50%; transform:translateY(-50%);
+    width:18px;height:18px;border-radius:5px; background:var(--ink); border:1px solid var(--line);
+    color:var(--rc); font-family:"JetBrains Mono",monospace; font-size:10px; font-weight:700;
+    display:grid;place-items:center;
+  }
+  .ticket li .leg{float:right; color:var(--muted-2); font-family:"JetBrains Mono",monospace; font-size:10.5px}
+  .ticket li em{font-style:normal; color:var(--muted-2); font-size:10.5px}
+  .ticket .ret{font-size:11px; color:var(--muted-2); padding-top:7px; border-top:1px dashed var(--line-soft); margin-top:1px}
+
+  .placeholder{padding:40px 24px; text-align:center; color:var(--muted-2)}
+  .placeholder svg{width:40px;height:40px;opacity:.5;margin-bottom:12px}
+  .placeholder p{font-size:12.5px; line-height:1.6; margin:0}
+
+  /* crew comparison modal */
+  .cmpmodal{position:absolute; inset:0; z-index:700; display:none; align-items:center; justify-content:center;
+    background:rgba(7,10,14,.66); backdrop-filter:blur(3px); padding:24px}
+  .cmpmodal.show{display:flex}
+  .cmpcard{background:var(--panel); border:1px solid var(--line); border-radius:14px; width:min(680px,100%);
+    max-height:88%; overflow:auto; box-shadow:0 24px 70px -20px rgba(0,0,0,.8)}
+  .cmphead{display:flex; align-items:flex-start; gap:12px; padding:18px 20px 14px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--panel); z-index:2}
+  .cmphead h3{font-family:"Archivo",sans-serif; font-size:16px; font-weight:800; margin:0; letter-spacing:.01em}
+  .cmphead span{font-size:11.5px; color:var(--muted-2); display:block; margin-top:3px}
+  .cmpx{margin-left:auto; border:1px solid var(--line); background:var(--panel-2); color:var(--muted); cursor:pointer;
+    width:30px; height:30px; border-radius:7px; flex:0 0 auto}
+  .cmpx:hover{color:var(--text); background:var(--raise)}
+  table.cmp{width:100%; border-collapse:collapse; font-size:12.5px; margin:6px 0}
+  table.cmp th{font-family:"Archivo",sans-serif; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted-2);
+    text-align:right; padding:12px 14px 8px; font-weight:700}
+  table.cmp th:first-child{text-align:left}
+  table.cmp td{padding:9px 14px; border-top:1px solid var(--line-soft); text-align:right; font-family:"JetBrains Mono",monospace; color:var(--text)}
+  table.cmp td.cc{text-align:left; font-weight:700}
+  table.cmp td.cc i{color:var(--muted-2); font-style:normal; font-size:10px; font-weight:400}
+  table.cmp td.tot{position:relative; min-width:158px}
+  table.cmp td.tot .bar{position:absolute; left:0; top:50%; transform:translateY(-50%); height:62%; background:var(--line); border-radius:0 4px 4px 0; z-index:0}
+  table.cmp td.tot b, table.cmp td.tot .tg{position:relative; z-index:1}
+  table.cmp tr.r-cheap td{background:rgba(61,220,151,.08)}
+  .tg{font-family:"Archivo",sans-serif; font-size:9px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+    padding:2px 6px; border-radius:4px; margin-left:6px; vertical-align:middle}
+  .tg.cheap{background:var(--good); color:#062416}
+  .tg.fast{background:var(--hi); color:#241600}
+  .cmpnote{font-size:12px; color:var(--muted); line-height:1.55; padding:6px 16px 18px; margin:0}
+  .cmpnote b{color:var(--text)}
+
+  /* leaflet markers */
+  .mk{display:grid;place-items:center;font-family:"JetBrains Mono",monospace;font-weight:700;
+      border-radius:50% 50% 50% 2px; transform:rotate(45deg); border:2px solid #0d1117;
+      box-shadow:0 3px 8px rgba(0,0,0,.5)}
+  .mk span{transform:rotate(-45deg); font-size:11px; line-height:1}
+  .mk.base{border-radius:7px; transform:none; background:var(--text); color:#0d1117}
+  .mk.base span{transform:none; font-size:12px}
+
+  @media (max-width:880px){
+    .app{grid-template-columns:1fr; grid-template-rows:auto 56vh; height:auto; min-height:100vh}
+    .main{order:-1; height:56vh}
+    .readout{grid-template-columns:repeat(3,1fr)}
+    .rail{height:auto}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#241600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/>
+          <path d="M8 19h6a3 3 0 0 0 3-3V8M16 5H9a3 3 0 0 0-3 3v8"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Crew Dispatch</h1>
+        <div class="sub">Route Optimizer</div>
+      </div>
+    </div>
+
+    <div class="scroll">
+      <!-- Home base -->
+      <div class="sec">
+        <h2>Home Base</h2>
+        <div class="row" style="margin-bottom:8px">
+          <input id="baseAddr" class="inp grow" placeholder="Address or place — e.g. 1 Frank Ogawa Plaza, Oakland" />
+          <button class="btn sm" id="baseFind">Find</button>
+        </div>
+        <div class="row">
+          <input id="baseLat" class="inp mono" placeholder="lat" />
+          <input id="baseLng" class="inp mono" placeholder="lng" />
+          <button class="btn sm icon" id="baseSet" title="Set from lat/lng">Set</button>
+          <button class="btn sm icon" id="basePick" title="Click base on map">📍</button>
+        </div>
+        <div id="baseShow"></div>
+      </div>
+
+      <!-- Jobs -->
+      <div class="sec">
+        <h2>Job Stops <span class="tag" id="jobCount">0</span></h2>
+        <div class="row" style="margin-bottom:8px">
+          <input id="jobAddr" class="inp grow" placeholder="Address of a job site…" />
+          <button class="btn sm" id="jobFind">Add</button>
+        </div>
+        <div class="row" style="margin-bottom:10px">
+          <input id="jobLat" class="inp mono" placeholder="lat" />
+          <input id="jobLng" class="inp mono" placeholder="lng" />
+          <button class="btn sm icon" id="jobSet" title="Add from lat/lng">+</button>
+          <button class="btn sm icon" id="jobPick" title="Click jobs on map">📍</button>
+        </div>
+
+        <details class="bulk" id="bulkBox">
+          <summary>Paste many at once</summary>
+          <textarea id="bulkText" class="inp" rows="6" placeholder="One stop per line — addresses or lat,lng&#10;1355 Market St, San Francisco&#10;2150 Shattuck Ave, Berkeley&#10;37.4419, -122.1430"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button class="btn amber sm grow" id="bulkAdd">Add all stops</button>
+            <button class="btn ghost sm" id="bulkClear">Clear box</button>
+          </div>
+          <div class="hint">Each line becomes a stop. Lines that are <b>lat,lng</b> drop in instantly; addresses are looked up one per second (OpenStreetMap's limit), so a long list takes a moment. Lines that can't be found are reported and left in the box.</div>
+        </details>
+
+        <div id="jobList"></div>
+      </div>
+
+      <!-- Crews & objective -->
+      <div class="sec">
+        <h2>Crews &amp; Goal</h2>
+        <label class="fld">
+          <span>Number of crews (routes)</span>
+          <input id="crews" class="inp mono" type="number" min="1" max="12" value="3" />
+        </label>
+        <span class="fld" style="display:block"><span>Optimize for</span></span>
+        <div class="seg" id="objSeg">
+          <button data-obj="time" class="on">Least time</button>
+          <button data-obj="distance">Least miles</button>
+        </div>
+        <span class="fld" style="display:block; margin-top:11px"><span>Split jobs across crews by</span></span>
+        <div class="seg" id="balSeg">
+          <button data-bal="finish" class="on">Even workload</button>
+          <button data-bal="count">Equal stops</button>
+          <button data-bal="total">Fewest miles</button>
+        </div>
+        <div class="hint"><b>Even workload</b> balances each crew's drive time so they finish together. <b>Equal stops</b> gives every crew about the same number of jobs. <b>Fewest miles</b> minimizes total travel and may leave a crew unused. Routing uses the live OSRM driving network — real road distances and times.</div>
+      </div>
+
+      <!-- Schedule & traffic -->
+      <div class="sec">
+        <h2>Schedule &amp; Traffic</h2>
+        <div class="row">
+          <label class="fld grow"><span>Depart to sites</span><input id="departTime" class="inp mono" type="time" value="08:00" /></label>
+          <label class="fld grow"><span>Return to base</span><input id="returnTime" class="inp mono" type="time" value="16:30" /></label>
+        </div>
+        <label class="chk"><input type="checkbox" id="manualTraffic" /><span>Set traffic multipliers manually</span></label>
+        <div id="manualRow" class="row" style="display:none; margin-top:8px">
+          <label class="fld grow"><span>Outbound ×</span><input id="depFactor" class="inp mono" type="number" step="0.05" min="0.5" value="1.45" /></label>
+          <label class="fld grow"><span>Return ×</span><input id="retFactor" class="inp mono" type="number" step="0.05" min="0.5" value="1.50" /></label>
+        </div>
+        <div id="trafficNote" class="hint"></div>
+      </div>
+
+      <!-- Costs -->
+      <div class="sec">
+        <h2>Cost Inputs</h2>
+        <div class="row">
+          <label class="fld grow"><span>Crew rate ($/hr)</span><input id="rate" class="inp mono" type="number" step="0.01" value="30.10" /></label>
+          <label class="fld grow"><span>Gas price ($/gal)</span><input id="gas" class="inp mono" type="number" step="0.01" value="4.50" /></label>
+        </div>
+        <label class="fld"><span>Vehicle fuel economy (MPG)</span><input id="mpg" class="inp mono" type="number" step="0.1" value="18" /></label>
+        <label class="fld"><span>Round-trip travel time per crew (min)</span><input id="rttbuf" class="inp mono" type="number" step="1" min="0" value="0" /></label>
+        <div class="hint">Each crew's route already includes the drive out to its first stop and back from its last stop. This buffer adds extra there-and-back minutes per crew (depot loading, parking, traffic) — counted in finish time and labor cost. Travel cost = total crew time × rate. Gas = total miles ÷ MPG × price/gallon.</div>
+      </div>
+
+      <!-- Actions -->
+      <div class="sec" style="border-bottom:0">
+        <div id="frameBanner" class="banner" style="display:none">
+          <b>Running in a preview pane.</b> Live routing &amp; address lookup need a real browser tab —
+          download this file and open it directly, or routing will fail.
+        </div>
+        <button id="run" class="btn amber full" style="padding:12px; font-size:14px; margin-bottom:9px">Optimize routes</button>
+        <button id="compare" class="btn full" style="margin-bottom:9px">Compare crew counts →</button>
+        <div class="row">
+          <button id="conntest" class="btn ghost grow sm">Test connection</button>
+          <button id="example" class="btn ghost grow sm">Load Bay Area example</button>
+          <button id="clear" class="btn ghost grow sm">Clear all</button>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div id="tickets" class="tickets" style="display:none"></div>
+      <div id="placeholder" class="placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 20l-5.5 2.5v-15L9 5m0 15l6-3m-6 3v-15m6 12l5.5 2.5v-15L15 4.5m0 12.5v-12.5m0 0L9 5"/></svg>
+        <p>Set a home base and add job stops, then optimize.<br>Routes and totals appear here and on the map.</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= MAP ================= -->
+  <main class="main">
+    <div id="map"></div>
+
+    <div class="modebar" id="modebar">
+      <span id="modeText">Click the map to place the base</span>
+      <button id="modeDone">Done</button>
+    </div>
+
+    <div class="readout idle" id="readout">
+      <div class="metric accent"><div class="k">Total miles</div><div class="v" id="mTotMiles">—</div></div>
+      <div class="metric"><div class="k">Total crew time</div><div class="v" id="mTotTime">—</div></div>
+      <div class="metric"><div class="k">Finish (parallel)</div><div class="v" id="mFinish">—</div></div>
+      <div class="metric"><div class="k">Travel labor</div><div class="v" id="mLabor">—</div></div>
+      <div class="metric"><div class="k">Gas</div><div class="v" id="mGas">—</div></div>
+      <div class="metric total"><div class="k">Total cost</div><div class="v" id="mTotal">—</div></div>
+    </div>
+
+    <div class="toast" id="toast"><span class="spin"></span><span id="toastMsg">Working…</span></div>
+
+    <div class="cmpmodal" id="compareModal">
+      <div class="cmpcard">
+        <div class="cmphead">
+          <div><h3>Crews vs. cost &amp; time</h3><span>Same jobs, every crew count — find your sweet spot</span></div>
+          <button id="compareClose" class="cmpx" title="Close">✕</button>
+        </div>
+        <div id="compareBody"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+"use strict";
+const COLORS = ['--r1','--r2','--r3','--r4','--r5','--r6','--r7','--r8','--r9','--r10','--r11','--r12']
+  .map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+
+const state = { base:null, jobs:[], result:null, pick:null };
+let uid = 1;
+let IN_FRAME=false; try{ IN_FRAME = window.self !== window.top; }catch(e){ IN_FRAME=true; }
+
+/* ---------------- Map ---------------- */
+const map = L.map('map',{zoomControl:true, attributionControl:true}).setView([37.66,-122.10], 9);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  attribution:'&copy; OpenStreetMap &copy; CARTO · routing by OSRM', maxZoom:19, subdomains:'abcd'
+}).addTo(map);
+const markerLayer = L.layerGroup().addTo(map);
+const lineLayer = L.layerGroup().addTo(map);
+
+map.on('click', e=>{
+  if(!state.pick) return;
+  const lat=+e.latlng.lat.toFixed(6), lng=+e.latlng.lng.toFixed(6);
+  if(state.pick==='base'){ setBase(lat,lng,`Base (${lat}, ${lng})`); }
+  else { addJob(lat,lng,`Stop (${lat}, ${lng})`); }
+});
+
+/* ---------------- Helpers ---------------- */
+const $ = id => document.getElementById(id);
+function toast(msg, spinning=true, isErr=false){
+  const t=$('toast'); $('toastMsg').textContent=msg;
+  t.querySelector('.spin').style.display = spinning?'block':'none';
+  t.classList.toggle('err', isErr); t.classList.add('show');
+}
+function hideToast(){ $('toast').classList.remove('show'); }
+function fmtMi(m){ return m.toFixed(1); }
+function fmtHrs(h){ const tot=Math.round(h*60); const hh=Math.floor(tot/60), mm=tot%60; return hh? `${hh}h ${mm}m` : `${mm}m`; }
+function money(v){ return '$'+v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+/* ---------------- Time-of-day traffic ---------------- */
+// Free-flow OSRM times scaled by an urban Bay-Area congestion curve.
+// Returns a multiplier on free-flow drive time for a given clock hour (0..24).
+function trafficFactor(h){
+  const pts=[[0,0.90],[5,1.00],[6.5,1.20],[8,1.50],[9.5,1.20],[11,1.10],[14,1.12],
+             [16,1.30],[17.5,1.55],[19,1.20],[21,1.00],[24,0.92]];
+  if(h<=pts[0][0]) return pts[0][1];
+  for(let i=1;i<pts.length;i++){
+    if(h<=pts[i][0]){ const [x0,y0]=pts[i-1],[x1,y1]=pts[i]; const t=(h-x0)/(x1-x0); return y0+(y1-y0)*t; }
+  }
+  return pts[pts.length-1][1];
+}
+function parseHour(hhmm){ const m=(hhmm||'').match(/^(\d{1,2}):(\d{2})$/); return m? (+m[1])+(+m[2])/60 : NaN; }
+function clock12(h){
+  if(!isFinite(h)) return '—';
+  let hh=Math.floor(h)%24, mm=Math.round((h-Math.floor(h))*60);
+  if(mm===60){mm=0;hh=(hh+1)%24;}
+  const ap=hh<12?'AM':'PM'; let h12=hh%12; if(h12===0)h12=12;
+  return `${h12}:${String(mm).padStart(2,'0')} ${ap}`;
+}
+function trafficFactors(){
+  if($('manualTraffic').checked){
+    return { dep:Math.max(0.3,+$('depFactor').value||1), ret:Math.max(0.3,+$('retFactor').value||1), manual:true };
+  }
+  return { dep:trafficFactor(parseHour($('departTime').value)), ret:trafficFactor(parseHour($('returnTime').value)), manual:false };
+}
+
+/* ---------------- Geocode (Nominatim) ---------------- */
+// Restricted to the San Francisco Bay Area so ambiguous addresses can't
+// resolve elsewhere. Box: west -123.6, south 36.85, east -121.2, north 38.85.
+const BAY_VIEWBOX='-123.6,38.85,-121.2,36.85';
+async function geocode(q){
+  const url='https://nominatim.openstreetmap.org/search?format=json&limit=1'
+    +'&countrycodes=us&bounded=1&viewbox='+BAY_VIEWBOX
+    +'&q='+encodeURIComponent(q);
+  const r=await fetch(url,{headers:{'Accept':'application/json'}});
+  if(!r.ok) throw new Error('geocode http '+r.status);
+  const j=await r.json();
+  if(!j.length) throw new Error('No Bay Area match for that address');
+  return { lat:+(+j[0].lat).toFixed(6), lng:+(+j[0].lon).toFixed(6), name:j[0].display_name.split(',').slice(0,2).join(',') };
+}
+
+/* ---------------- Base / Job CRUD ---------------- */
+function setBase(lat,lng,name){ state.base={lat,lng,name}; renderPoints(); drawMarkers(); fitMap(); }
+function addJob(lat,lng,name){ state.jobs.push({id:uid++,lat,lng,name}); renderPoints(); drawMarkers(); fitMap(); }
+function removeJob(id){ state.jobs=state.jobs.filter(j=>j.id!==id); renderPoints(); clearResult(); drawMarkers(); }
+
+function renderPoints(){
+  // base
+  const bs=$('baseShow');
+  if(state.base){
+    bs.innerHTML = `<div class="pt base" style="margin-top:10px">
+      <div class="pin">B</div>
+      <div class="body"><div class="nm">${esc(state.base.name)}</div>
+      <div class="co">${state.base.lat}, ${state.base.lng}</div></div>
+      <button class="x" title="Remove" data-rmbase>✕</button></div>`;
+    bs.querySelector('[data-rmbase]').onclick=()=>{state.base=null; renderPoints(); clearResult(); drawMarkers();};
+  } else bs.innerHTML='';
+  // jobs
+  $('jobCount').textContent=state.jobs.length;
+  const jl=$('jobList');
+  if(!state.jobs.length){ jl.innerHTML='<div class="empty">No stops yet.</div>'; return; }
+  jl.innerHTML='';
+  state.jobs.forEach((j,i)=>{
+    const el=document.createElement('div'); el.className='pt';
+    el.innerHTML=`<div class="pin" style="background:var(--muted)">${i+1}</div>
+      <div class="body"><div class="nm">${esc(j.name)}</div><div class="co">${j.lat}, ${j.lng}</div></div>
+      <button class="x" title="Remove">✕</button>`;
+    el.querySelector('.x').onclick=()=>removeJob(j.id);
+    jl.appendChild(el);
+  });
+}
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------------- Markers ---------------- */
+function divMarker(label, color, isBase){
+  const html = isBase
+    ? `<div class="mk base" style="width:26px;height:26px"><span>${label}</span></div>`
+    : `<div class="mk" style="width:24px;height:24px;background:${color};color:#0d1117"><span>${label}</span></div>`;
+  return L.divIcon({html, className:'', iconSize:[26,26], iconAnchor:isBase?[13,13]:[5,24]});
+}
+function dot(latlng, color, tip){
+  return L.circleMarker(latlng,{radius:4, color:'#0d1117', weight:1, fillColor:color, fillOpacity:1})
+    .bindTooltip(tip,{direction:'top'});
+}
+function drawMarkers(){
+  markerLayer.clearLayers();
+  const many = state.jobs.length>150; // switch to light dots for big batches
+  if(state.base) L.marker([state.base.lat,state.base.lng],{icon:divMarker('B',null,true)})
+    .bindTooltip(state.base.name,{direction:'top'}).addTo(markerLayer);
+  if(state.result){
+    state.result.routes.forEach((rt,ri)=>{
+      const col=COLORS[ri%COLORS.length];
+      rt.seq.forEach((jobIdx,pos)=>{
+        const j=state.jobs[jobIdx];
+        const tip=`${j.name} · Crew ${ri+1}, stop ${pos+1}`;
+        (many ? dot([j.lat,j.lng],col,tip)
+              : L.marker([j.lat,j.lng],{icon:divMarker(pos+1,col,false)}).bindTooltip(tip,{direction:'top'})
+        ).addTo(markerLayer);
+      });
+    });
+  } else {
+    state.jobs.forEach((j,i)=>{
+      (many ? dot([j.lat,j.lng],'#8a98a8',j.name)
+            : L.marker([j.lat,j.lng],{icon:divMarker(i+1,'#8a98a8',false)}).bindTooltip(j.name,{direction:'top'})
+      ).addTo(markerLayer);
+    });
+  }
+}
+function fitMap(){
+  const pts=[]; if(state.base)pts.push([state.base.lat,state.base.lng]);
+  state.jobs.forEach(j=>pts.push([j.lat,j.lng]));
+  if(pts.length>=1) map.fitBounds(L.latLngBounds(pts).pad(0.25),{maxZoom:13});
+}
+
+/* ---------------- OSRM matrix + route geometry ---------------- */
+async function osrmTable(points){
+  const coords=points.map(p=>`${p.lng},${p.lat}`).join(';');
+  const url=`https://router.project-osrm.org/table/v1/driving/${coords}?annotations=distance,duration`;
+  const r=await fetch(url);
+  if(!r.ok) throw new Error('OSRM table http '+r.status);
+  const j=await r.json();
+  if(j.code!=='Ok') throw new Error('OSRM: '+(j.message||j.code));
+  return { dist:j.distances, dur:j.durations }; // meters, seconds
+}
+async function osrmRoute(points){ // ordered points -> road geometry
+  const coords=points.map(p=>`${p.lng},${p.lat}`).join(';');
+  const url=`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+  try{
+    const r=await fetch(url); const j=await r.json();
+    if(j.code==='Ok' && j.routes[0]) return j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+  }catch(e){}
+  return points.map(p=>[p.lat,p.lng]); // fallback straight lines
+}
+
+// Great-circle distance in meters
+function havMeters(a,b){
+  const R=6371000, toR=x=>x*Math.PI/180;
+  const dLa=toR(b.lat-a.lat), dLn=toR(b.lng-a.lng), la1=toR(a.lat), la2=toR(b.lat);
+  const h=Math.sin(dLa/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLn/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+const OSRM_MAX=100; // demo server caps a table request at 100 locations
+// Build distance(m)+duration(s) matrices for any number of points.
+// <=100 points: exact OSRM road table. >100: estimate calibrated to a real OSRM
+// sample of the actual points (road/straight ratio + average speed), which scales
+// to hundreds of stops without hitting the server's matrix cap.
+async function getMatrix(points, onMsg){
+  const N=points.length;
+  if(N<=OSRM_MAX){
+    onMsg && onMsg('Pulling road network from OSRM…');
+    const t=await osrmTable(points);
+    return { dist:t.dist, dur:t.dur, mode:'osrm', N };
+  }
+  // ---- calibrate from a real sample ----
+  onMsg && onMsg('Sampling road network to calibrate…');
+  let factor=1.32, speed=13.4; // fallbacks: ×1.32 road winding, ~30 mph
+  try{
+    const rng=mulberry(20260625);
+    const idxs=[0]; const pool=[]; for(let i=1;i<N;i++) pool.push(i);
+    for(let i=pool.length-1;i>0;i--){ const k=(rng()*(i+1))|0; [pool[i],pool[k]]=[pool[k],pool[i]]; }
+    for(let i=0;i<Math.min(OSRM_MAX-1,pool.length);i++) idxs.push(pool[i]);
+    const sample=idxs.map(i=>points[i]);
+    const t=await osrmTable(sample);
+    const fr=[], sp=[];
+    for(let i=0;i<sample.length;i++) for(let j=0;j<sample.length;j++){
+      if(i===j) continue;
+      const hv=havMeters(sample[i],sample[j]); const rd=t.dist[i][j], du=t.dur[i][j];
+      if(hv>200 && rd>0){ fr.push(rd/hv); if(du>0) sp.push(rd/du); }
+    }
+    const med=arr=>{ if(!arr.length) return null; const s=arr.slice().sort((a,b)=>a-b); return s[s.length>>1]; };
+    const mf=med(fr), ms=med(sp);
+    if(mf && mf>0.9 && mf<3) factor=mf;
+    if(ms && ms>2 && ms<45) speed=ms;
+  }catch(e){ /* keep fallbacks if sampling fails */ }
+  onMsg && onMsg('Building distance matrix…');
+  const dist=new Array(N), dur=new Array(N);
+  for(let i=0;i<N;i++){ dist[i]=new Float64Array(N); dur[i]=new Float64Array(N); }
+  for(let i=0;i<N;i++){
+    for(let j=i+1;j<N;j++){
+      const m=havMeters(points[i],points[j])*factor;
+      dist[i][j]=dist[j][i]=m; dur[i][j]=dur[j][i]=m/speed;
+    }
+  }
+  return { dist, dur, mode:'estimate', factor, speed, N };
+}
+
+/* ---------------- VRP solver ----------------
+   nodes: 0 = base, 1..n = jobs.  Fixed K routes, each base->...->base.
+   C = cost matrix for chosen objective. Reports use real miles + hours.
+*/
+function solveVRP(C, n, K, coords, balance){
+  const jobs=[]; for(let i=1;i<=n;i++) jobs.push(i);
+  const routeCost = seq => { let s=0,p=0; for(const v of seq){s+=C[p][v];p=v;} return s+C[p][0]; };
+
+  function twoOpt(seq){
+    let improved=true;
+    while(improved){ improved=false;
+      for(let i=0;i<seq.length-1;i++){
+        for(let k=i+1;k<seq.length;k++){
+          const a=(i===0?0:seq[i-1]), b=seq[i];
+          const c=seq[k], d=(k===seq.length-1?0:seq[k+1]);
+          if(a===c||b===d) continue;
+          const delta=(C[a][c]+C[b][d])-(C[a][b]+C[c][d]);
+          if(delta<-1e-7){ let lo=i,hi=k; while(lo<hi){[seq[lo],seq[hi]]=[seq[hi],seq[lo]];lo++;hi--;} improved=true; }
+        }
+      }
+    }
+    return seq;
+  }
+  function orOpt(seq){ // move chains of length 1..3
+    let improved=true;
+    while(improved){ improved=false;
+      for(let L=1;L<=3;L++){
+        for(let i=0;i+L<=seq.length;i++){
+          const chain=seq.slice(i,i+L);
+          const rest=seq.slice(0,i).concat(seq.slice(i+L));
+          const base=routeCost(seq);
+          for(let p=0;p<=rest.length;p++){
+            if(p===i && L===1) continue;
+            const cand=rest.slice(0,p).concat(chain, rest.slice(p));
+            if(routeCost(cand)+1e-7<base){ seq.splice(0,seq.length,...cand); improved=true; break; }
+          }
+          if(improved) break;
+        }
+        if(improved) break;
+      }
+    }
+    return seq;
+  }
+  const polish = seq => orOpt(twoOpt(seq));
+
+  // ---- constructions ----
+  function kmeans(seed){
+    let rng=mulberry(seed);
+    const cs=jobs.slice().sort(()=>rng()-0.5).slice(0,K).map(j=>({lat:coords[j].lat,lng:coords[j].lng}));
+    let assign=new Array(n).fill(0);
+    for(let it=0; it<14; it++){
+      for(let a=0;a<n;a++){ const j=jobs[a]; let bi=0,bd=1e18;
+        for(let c=0;c<K;c++){const dl=coords[j].lat-cs[c].lat, dg=coords[j].lng-cs[c].lng; const d=dl*dl+dg*dg; if(d<bd){bd=d;bi=c;}}
+        assign[a]=bi; }
+      const sl=Array.from({length:K},()=>[0,0,0]);
+      for(let a=0;a<n;a++){const j=jobs[a];const c=assign[a];sl[c][0]+=coords[j].lat;sl[c][1]+=coords[j].lng;sl[c][2]++;}
+      for(let c=0;c<K;c++) if(sl[c][2]){cs[c]={lat:sl[c][0]/sl[c][2],lng:sl[c][1]/sl[c][2]};}
+    }
+    const routes=Array.from({length:K},()=>[]);
+    for(let a=0;a<n;a++) routes[assign[a]].push(jobs[a]);
+    return routes;
+  }
+  function sweep(){
+    const ang=jobs.map(j=>({j,a:Math.atan2(coords[j].lat-coords[0].lat, coords[j].lng-coords[0].lng)}))
+      .sort((x,y)=>x.a-y.a).map(o=>o.j);
+    const routes=Array.from({length:K},()=>[]); const per=Math.ceil(n/K);
+    ang.forEach((j,i)=>routes[Math.min(K-1,Math.floor(i/per))].push(j));
+    return routes;
+  }
+
+  // ---- scoring (depends on balance mode) ----
+  // 'finish' : minimize the LONGEST route -> spreads work, every crew gets a route
+  // 'count'  : equalize the number of stops per crew
+  // 'total'  : minimize total travel (may leave some crews idle)
+  function scoreOf(cost, cnts){
+    let total=0, mx=0; for(const c of cost){ total+=c; if(c>mx)mx=c; }
+    if(balance==='total') return {a:0, b:total};
+    if(balance==='finish') return {a:mx, b:total};
+    const used=cnts.length; let sum=0; for(const c of cnts) sum+=c; const avg=sum/used;
+    let sp=0; for(const c of cnts){ const d=c-avg; sp+=d*d; }
+    return {a:sp, b:total};
+  }
+  const better=(s1,s2)=> (s1.a < s2.a-1e-7) ? true : (s1.a > s2.a+1e-7) ? false : (s1.b < s2.b-1e-6);
+
+  // When the user asks for K crews (and there are >= K jobs), every crew MUST get
+  // a route. Only 'total' mode is allowed to leave a crew idle.
+  const forceAll = (balance!=='total') && (n>=K);
+  function repairEmpties(routes){
+    let guard=0;
+    while(guard++ < K*3){
+      const empties=[]; let donor=-1, mx=1;
+      for(let i=0;i<K;i++){ if(routes[i].length===0) empties.push(i); if(routes[i].length>mx){mx=routes[i].length; donor=i;} }
+      if(!empties.length || donor<0) break;
+      // pull the most outlying stop (farthest from base) out of the biggest route into the empty one
+      let bi=0,bv=-1; routes[donor].forEach((job,idx)=>{ const v=C[0][job]; if(v>bv){bv=v;bi=idx;} });
+      const job=routes[donor].splice(bi,1)[0];
+      routes[empties[0]]=[job];
+      if(routes[donor].length) polish(routes[donor]);
+    }
+    return routes;
+  }
+
+  // ---- cross-route local search (relocate + swap), driven by the chosen score ----
+  function improve(routes){
+    if(forceAll) repairEmpties(routes);
+    routes.forEach(r=>{ if(r.length) polish(r); });
+    let cost=routes.map(r=> r.length?routeCost(r):0);
+    let cnts=routes.map(r=>r.length);
+    let cur=scoreOf(cost,cnts);
+    let moved=true, guard=0;
+    while(moved && guard++<90){
+      moved=false;
+      // relocate: pull one stop from route a, drop it in the best slot of some route b
+      for(let a=0;a<K;a++){
+        if(forceAll && routes[a].length<=1) continue; // never empty a required crew
+        for(let pi=0; pi<routes[a].length; pi++){
+          if(forceAll && routes[a].length<=1) break;  // stop before removing its last stop
+          const node=routes[a][pi];
+          const without=routes[a].slice(); without.splice(pi,1);
+          const ca=without.length?routeCost(without):0;
+          let pick=null;
+          for(let b=0;b<K;b++){
+            if(b===a) continue;
+            for(let q=0;q<=routes[b].length;q++){
+              const cand=routes[b].slice(); cand.splice(q,0,node);
+              const cb=routeCost(cand);
+              const nc=cost.slice(); nc[a]=ca; nc[b]=cb;
+              const ncn=cnts.slice(); ncn[a]=without.length; ncn[b]=cand.length;
+              const s=scoreOf(nc,ncn);
+              if(better(s,cur) && (!pick||better(s,pick.s))) pick={b,cand,ca,cb,s,without};
+            }
+          }
+          if(pick){
+            routes[a]=pick.without; routes[pick.b]=pick.cand;
+            if(routes[a].length)polish(routes[a]); polish(routes[pick.b]);
+            cost[a]=routes[a].length?routeCost(routes[a]):0; cost[pick.b]=routeCost(routes[pick.b]);
+            cnts[a]=routes[a].length; cnts[pick.b]=routes[pick.b].length;
+            cur=scoreOf(cost,cnts); moved=true; pi=-1;
+          }
+        }
+      }
+      // swap: trade one stop between two routes
+      for(let a=0;a<K;a++) for(let b=a+1;b<K;b++){
+        for(let i=0;i<routes[a].length;i++) for(let k=0;k<routes[b].length;k++){
+          const ra=routes[a].slice(), rb=routes[b].slice();
+          [ra[i],rb[k]]=[rb[k],ra[i]];
+          const nc=cost.slice(); nc[a]=routeCost(ra); nc[b]=routeCost(rb);
+          const s=scoreOf(nc,cnts); // counts unchanged by a swap
+          if(better(s,cur)){
+            routes[a]=ra; routes[b]=rb; polish(routes[a]); polish(routes[b]);
+            cost[a]=routeCost(routes[a]); cost[b]=routeCost(routes[b]);
+            cur=scoreOf(cost,cnts); moved=true;
+          }
+        }
+      }
+    }
+    const fc=routes.map(r=>r.length?routeCost(r):0), fn=routes.map(r=>r.length);
+    return {routes, score:scoreOf(fc,fn)};
+  }
+
+  // bias used when rebuilding routes so balance modes don't pile onto one crew
+  let avgEdge=0; for(let j=1;j<=n;j++) avgEdge+=C[0][j]; avgEdge/=Math.max(1,n);
+  const BALW = balance==='total' ? 0 : avgEdge*0.5;
+
+  // ---- run candidate starts, keep the best by score ----
+  let best=null, bestS=null;
+  const seeds=[sweep()]; for(let s=0;s<6;s++) seeds.push(kmeans(11+s*7));
+  for(const seed of seeds){
+    const {routes,score}=improve(seed.map(r=>r.slice()));
+    if(!best || better(score,bestS)){ best=routes.map(r=>r.slice()); bestS=score; }
+  }
+  // ---- ruin & recreate perturbations ----
+  let rng=mulberry(98765);
+  for(let it=0; it<55; it++){
+    let routes=best.map(r=>r.slice());
+    const pool=[]; const rm=Math.max(1,Math.round(n*0.2));
+    for(let t=0;t<rm;t++){
+      const ne=routes.map((r,i)=>r.length?i:-1).filter(i=>i>=0);
+      if(!ne.length) break;
+      const ri=ne[(rng()*ne.length)|0], pi=(rng()*routes[ri].length)|0;
+      pool.push(routes[ri][pi]); routes[ri].splice(pi,1);
+    }
+    for(const node of pool){
+      let bI=0,bP=0,bD=1e18;
+      for(let i=0;i<K;i++){ for(let q=0;q<=routes[i].length;q++){
+        const before=routes[i].length?routeCost(routes[i]):0;
+        const cand=routes[i].slice(); cand.splice(q,0,node);
+        const d=(routeCost(cand)-before)+routes[i].length*BALW;
+        if(d<bD){bD=d;bI=i;bP=q;}
+      }}
+      routes[bI].splice(bP,0,node);
+    }
+    const {routes:imp,score}=improve(routes);
+    if(better(score,bestS)){ best=imp.map(r=>r.slice()); bestS=score; }
+  }
+  best.forEach(r=>{ if(r.length) polish(r); });
+  return best;
+}
+
+/* ---------------- Scalable solver for big batches (100s of stops) ----------------
+   kmeans clustering + nearest-neighbour ordering + capped 2-opt, then delta-based,
+   neighbour-limited relocate driven by the same balance score. Runs in well under a
+   second for several hundred stops. */
+function solveLarge(C, n, K, coords, balance){
+  const forceAll=(balance!=='total')&&(n>=K);
+  const rc=seq=>{let s=0,p=0;for(const v of seq){s+=C[p][v];p=v;}return s+C[p][0];};
+  function score(cost,cnts){let total=0,mx=0;for(const c of cost){total+=c;if(c>mx)mx=c;}
+    if(balance==='total')return{a:0,b:total};
+    if(balance==='finish')return{a:mx,b:total};
+    const avg=cnts.reduce((s,c)=>s+c,0)/cnts.length;let sp=0;for(const c of cnts){const d=c-avg;sp+=d*d;}return{a:sp,b:total};}
+  const better=(s1,s2)=>(s1.a<s2.a-1e-7)?true:(s1.a>s2.a+1e-7)?false:(s1.b<s2.b-1e-6);
+  function kmeans(seed){let rng=mulberry(seed);const idx=[];for(let i=1;i<=n;i++)idx.push(i);
+    const cs=idx.slice().sort(()=>rng()-0.5).slice(0,K).map(j=>({lat:coords[j].lat,lng:coords[j].lng}));
+    let asg=new Array(n).fill(0);
+    for(let it=0;it<12;it++){for(let a=0;a<n;a++){const j=a+1;let bi=0,bd=1e18;for(let c=0;c<K;c++){const dl=coords[j].lat-cs[c].lat,dg=coords[j].lng-cs[c].lng;const d=dl*dl+dg*dg;if(d<bd){bd=d;bi=c;}}asg[a]=bi;}
+      const sl=Array.from({length:K},()=>[0,0,0]);for(let a=0;a<n;a++){const j=a+1,c=asg[a];sl[c][0]+=coords[j].lat;sl[c][1]+=coords[j].lng;sl[c][2]++;}
+      for(let c=0;c<K;c++)if(sl[c][2]){cs[c]={lat:sl[c][0]/sl[c][2],lng:sl[c][1]/sl[c][2]};}}
+    const routes=Array.from({length:K},()=>[]);for(let a=0;a<n;a++)routes[asg[a]].push(a+1);return routes;}
+  function nn(arr){const unv=new Set(arr);let cur=0;const out=[];while(unv.size){let best=-1,bd=1e18;for(const j of unv){const d=C[cur][j];if(d<bd){bd=d;best=j;}}out.push(best);unv.delete(best);cur=best;}return out;}
+  function twoOpt(seq){const cap=seq.length>250?1:(seq.length>120?3:6);let it=0,imp=true;
+    while(imp&&it++<cap){imp=false;for(let i=0;i<seq.length-1;i++){for(let k=i+1;k<seq.length;k++){
+      const a=i===0?0:seq[i-1],b=seq[i],c=seq[k],d=k===seq.length-1?0:seq[k+1];if(a===c||b===d)continue;
+      if(C[a][c]+C[b][d]<C[a][b]+C[c][d]-1e-9){let lo=i,hi=k;while(lo<hi){const t=seq[lo];seq[lo]=seq[hi];seq[hi]=t;lo++;hi--;}imp=true;}}}}
+    return seq;}
+  function repair(routes){let g=0;while(g++<K*3){let empties=[],donor=-1,mx=1;for(let i=0;i<K;i++){if(routes[i].length===0)empties.push(i);if(routes[i].length>mx){mx=routes[i].length;donor=i;}}
+    if(!empties.length||donor<0)break;let bi=0,bv=-1;routes[donor].forEach((job,idx)=>{const v=C[0][job];if(v>bv){bv=v;bi=idx;}});const job=routes[donor].splice(bi,1)[0];routes[empties[0]]=[job];}return routes;}
+
+  let routes=kmeans(12345).map(r=>nn(r));routes.forEach(r=>{if(r.length>1)twoOpt(r);});
+  if(forceAll)repair(routes);
+  let cost=routes.map(r=>r.length?rc(r):0), cnts=routes.map(r=>r.length);
+  const NB=Math.min(K-1,3), passes=n>300?5:9;
+  const centroid=r=>{if(!r.length)return coords[0];let la=0,ln=0;for(const j of r){la+=coords[j].lat;ln+=coords[j].lng;}return{lat:la/r.length,lng:ln/r.length};};
+  for(let pass=0;pass<passes;pass++){
+    let moved=false;
+    const cent=routes.map(centroid);
+    const near=routes.map((_,a)=>{const ds=[];for(let b=0;b<K;b++)if(b!==a){const dl=cent[a].lat-cent[b].lat,dg=cent[a].lng-cent[b].lng;ds.push([dl*dl+dg*dg,b]);}ds.sort((x,y)=>x[0]-y[0]);return ds.slice(0,NB).map(x=>x[1]);});
+    for(let a=0;a<K;a++){
+      for(let pi=0;pi<routes[a].length;pi++){
+        if(forceAll&&routes[a].length<=1)break;
+        const ra=routes[a], node=ra[pi];
+        const prevA=pi===0?0:ra[pi-1], nextA=pi===ra.length-1?0:ra[pi+1];
+        const remDelta=C[prevA][nextA]-C[prevA][node]-C[node][nextA];
+        const curScore=score(cost,cnts);
+        let bestMove=null;
+        for(const b of near[a]){
+          const rb=routes[b];let bestPos=0,bestIns=1e18;
+          for(let pos=0;pos<=rb.length;pos++){const prev=pos===0?0:rb[pos-1],next=pos===rb.length?0:rb[pos];const id=C[prev][node]+C[node][next]-C[prev][next];if(id<bestIns){bestIns=id;bestPos=pos;}}
+          const nc=cost.slice();nc[a]=cost[a]+remDelta;nc[b]=cost[b]+bestIns;
+          const ncn=cnts.slice();ncn[a]--;ncn[b]++;
+          const s=score(nc,ncn);
+          if(better(s,curScore)&&(!bestMove||better(s,bestMove.s))){bestMove={b,bestPos,bestIns,s};}
+        }
+        if(bestMove){const b=bestMove.b;ra.splice(pi,1);routes[b].splice(bestMove.bestPos,0,node);
+          cost[a]=ra.length?rc(ra):0;cost[b]=rc(routes[b]);cnts[a]=ra.length;cnts[b]=routes[b].length;moved=true;pi--;}
+      }
+    }
+    if(!moved)break;
+  }
+  routes.forEach(r=>{if(r.length>1)twoOpt(r);});
+  return routes;
+}
+// Pick the right solver for the problem size.
+function solve(C, n, K, coords, balance){ return n>120 ? solveLarge(C,n,K,coords,balance) : solveVRP(C,n,K,coords,balance); }
+
+function mulberry(a){ return function(){ a|=0;a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+/* ---------------- Plan metrics (shared) ---------------- */
+const M2MI=1/1609.344, S2HR=1/3600, FUELSENS=0.5;
+function legList(r, dist){ const out=[]; let prev=0; for(const node of r){ out.push(dist[prev][node]*M2MI); prev=node; } return out; }
+// Turn solver output (node-id routes) + raw OSRM matrices into per-route detail and totals.
+function buildPlan(routesIdx, dist, dur, P){
+  const {depF, retF, rttBuf, rate, gasPrice, mpg}=P;
+  let totMi=0, totHr=0, maxHr=0, totBuf=0, totDriveHr=0, totFuelMi=0;
+  const routes = routesIdx.filter(r=>r.length).map((r)=>{
+    let mi=0,driveHr=0,fuelMi=0,prev=0;
+    const seq=r.map(node=>node-1);
+    for(const node of r){
+      const lm=dist[prev][node]*M2MI;
+      mi+=lm; driveHr+=dur[prev][node]*S2HR*depF; fuelMi+=lm*(1+(depF-1)*FUELSENS); prev=node;
+    }
+    const backMi=dist[prev][0]*M2MI, backHr=dur[prev][0]*S2HR*retF;
+    mi+=backMi; driveHr+=backHr; fuelMi+=backMi*(1+(retF-1)*FUELSENS);
+    const hr=driveHr+rttBuf;
+    totMi+=mi; totHr+=hr; totBuf+=rttBuf; totDriveHr+=driveHr; totFuelMi+=fuelMi; maxHr=Math.max(maxHr,hr);
+    return { seq, miles:mi, hours:hr, driveHours:driveHr, backMiles:backMi, backHours:backHr, buffer:rttBuf, fuelMiles:fuelMi, legs:legList(r, dist) };
+  });
+  const labor=totHr*rate, gas=(totFuelMi/mpg)*gasPrice, total=labor+gas;
+  return { routes, totMi, totHr, maxHr, totBuf, totDriveHr, totFuelMi, labor, gas, total };
+}
+
+/* ---------------- Optimize ---------------- */
+async function optimize(){
+  if(!state.base){ toast('Set a home base first.', false, true); setTimeout(hideToast,2600); return; }
+  if(state.jobs.length<1){ toast('Add at least one job stop.', false, true); setTimeout(hideToast,2600); return; }
+  let K=Math.max(1, Math.min(12, parseInt($('crews').value)||1));
+  K=Math.min(K, state.jobs.length);
+  const objIsTime = document.querySelector('#objSeg button.on').dataset.obj==='time';
+  const balance = document.querySelector('#balSeg button.on').dataset.bal;
+  const rate=+$('rate').value||0, gasPrice=+$('gas').value||0, mpg=+$('mpg').value||1;
+
+  $('run').disabled=true;
+  let mat;
+  try{
+    mat=await getMatrix([state.base, ...state.jobs], m=>toast(m));
+  }catch(e){
+    $('run').disabled=false;
+    const sandbox = IN_FRAME ? ' It looks like this is running inside a preview pane, which blocks outside connections — download the file and open it in its own browser tab.' : '';
+    toast('Couldn\u2019t reach the routing server.'+sandbox+' ('+e.message+')', false, true);
+    setTimeout(hideToast,7000); return;
+  }
+
+  const n=state.jobs.length;
+  // matrices indexed 0..n (0 = base)
+  const dist=mat.dist, dur=mat.dur;
+  const tf=trafficFactors(); const depF=tf.dep, retF=tf.ret;
+  // Time objective: scale durations by traffic. Any leg arriving back at base
+  // (column 0) uses the RETURN factor; every other leg uses the OUTBOUND factor.
+  // Distance objective is unaffected by time of day.
+  const C = objIsTime
+    ? dur.map((row)=>Array.from(row,(v,j)=> v*(j===0?retF:depF)))
+    : dist.map(row=>Array.from(row));
+  const coords=[ {lat:state.base.lat,lng:state.base.lng}, ...state.jobs.map(j=>({lat:j.lat,lng:j.lng})) ];
+
+  toast(n>120?`Optimizing ${n} stops across ${K} crews…`:'Optimizing crew routes…');
+  await new Promise(r=>setTimeout(r,20)); // let UI paint
+
+  const routesIdx = solve(C, n, K, coords, balance); // arrays of node ids (1..n)
+
+  // build report (shared with crew-count comparison)
+  const rttBuf = Math.max(0, +$('rttbuf').value||0)/60; // hours added per crew, there-and-back
+  const plan = buildPlan(routesIdx, dist, dur, {depF, retF, rttBuf, rate, gasPrice, mpg});
+  state.result={ ...plan, depF, retF, manual:tf.manual, departTime:$('departTime').value, returnTime:$('returnTime').value,
+                 matMode:mat.mode, matFactor:mat.factor, matSpeed:mat.speed };
+
+  // road geometry per route
+  toast('Tracing road paths…');
+  await drawRoutes();
+  drawMarkers();
+  renderResult();
+  hideToast();
+  $('run').disabled=false;
+}
+
+/* ---------------- Compare crew counts ---------------- */
+async function compareCrews(){
+  if(!state.base){ toast('Set a home base first.', false, true); setTimeout(hideToast,2600); return; }
+  if(state.jobs.length<2){ toast('Add at least two job stops to compare.', false, true); setTimeout(hideToast,2600); return; }
+  const objIsTime = document.querySelector('#objSeg button.on').dataset.obj==='time';
+  const balance = document.querySelector('#balSeg button.on').dataset.bal;
+  const rate=+$('rate').value||0, gasPrice=+$('gas').value||0, mpg=+$('mpg').value||1;
+  const rttBuf=Math.max(0,+$('rttbuf').value||0)/60;
+  const tf=trafficFactors(); const depF=tf.dep, retF=tf.ret;
+
+  $('compare').disabled=true;
+  let mat;
+  try{ mat=await getMatrix([state.base, ...state.jobs], m=>toast(m)); }
+  catch(e){ $('compare').disabled=false;
+    const sb=IN_FRAME?' Open this file in its own browser tab — the preview pane blocks connections.':'';
+    toast('Couldn\u2019t reach the routing server.'+sb, false, true); setTimeout(hideToast,7000); return; }
+
+  const n=state.jobs.length, maxC=Math.min(n,12);
+  const dist=mat.dist, dur=mat.dur;
+  const coords=[ {lat:state.base.lat,lng:state.base.lng}, ...state.jobs.map(j=>({lat:j.lat,lng:j.lng})) ];
+  const C = objIsTime ? dur.map(row=>Array.from(row,(v,j)=> v*(j===0?retF:depF))) : dist.map(r=>Array.from(r));
+
+  const rows=[];
+  for(let c=1;c<=maxC;c++){
+    toast(`Solving for ${c} crew${c>1?'s':''}…`);
+    await new Promise(r=>setTimeout(r,8));
+    const ri=solve(C, n, c, coords, balance);
+    const p=buildPlan(ri, dist, dur, {depF,retF,rttBuf,rate,gasPrice,mpg});
+    rows.push({c, crewsUsed:p.routes.length, totMi:p.totMi, finish:p.maxHr, totHr:p.totHr, labor:p.labor, gas:p.gas, total:p.total});
+  }
+  hideToast(); $('compare').disabled=false;
+  renderCompare(rows);
+}
+
+function renderCompare(rows){
+  const minCost=Math.min(...rows.map(r=>r.total));
+  const minFinish=Math.min(...rows.map(r=>r.finish));
+  const fastestC=Math.min(...rows.filter(r=>Math.abs(r.finish-minFinish)<1e-6).map(r=>r.c));
+  const maxTotal=Math.max(...rows.map(r=>r.total));
+  const body=rows.map(r=>{
+    const cheap=r.total===minCost, fast=r.c===fastestC;
+    const barW=Math.round(r.total/maxTotal*100);
+    const tags=(cheap?'<span class="tg cheap">cheapest</span>':'')+(fast?'<span class="tg fast">fastest</span>':'');
+    return `<tr class="${cheap?'r-cheap':''}${fast?' r-fast':''}">
+      <td class="cc">${r.c}${r.crewsUsed<r.c?`<i>(${r.crewsUsed} used)</i>`:''}</td>
+      <td>${fmtMi(r.totMi)}</td>
+      <td>${fmtHrs(r.finish)}</td>
+      <td>${fmtHrs(r.totHr)}</td>
+      <td>${money(r.labor)}</td>
+      <td>${money(r.gas)}</td>
+      <td class="tot"><span class="bar" style="width:${barW}%"></span><b>${money(r.total)}</b> ${tags}</td>
+    </tr>`;
+  }).join('');
+  $('compareBody').innerHTML=`
+    <table class="cmp">
+      <thead><tr><th>Crews</th><th>Total mi</th><th>Finish</th><th>Crew hrs</th><th>Labor</th><th>Gas</th><th>Total cost</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+    <p class="cmpnote">More crews finish the work sooner (lower <b>Finish</b>) but cost more in total, because each crew drives its own round trip from base. Fewer crews are cheaper but slower. Pick the row that fits your deadline and budget, then set that crew count and Optimize.</p>`;
+  $('compareModal').classList.add('show');
+}
+
+async function drawRoutes(){
+  lineLayer.clearLayers();
+  const estimate = state.result.matMode==='estimate';
+  for(let ri=0; ri<state.result.routes.length; ri++){
+    const rt=state.result.routes[ri];
+    const pts=[ state.base, ...rt.seq.map(i=>state.jobs[i]), state.base ];
+    const col=COLORS[ri%COLORS.length];
+    // real road geometry only when small enough to be quick & exact; otherwise straight segments
+    const geo=(estimate || rt.seq.length>40) ? pts.map(p=>[p.lat,p.lng]) : await osrmRoute(pts);
+    L.polyline(geo,{color:col, weight: estimate?2.5:4, opacity:.9, lineJoin:'round'}).addTo(lineLayer);
+  }
+}
+
+/* ---------------- Render results ---------------- */
+function renderResult(){
+  const R=state.result;
+  $('readout').classList.remove('idle');
+  $('mTotMiles').innerHTML = fmtMi(R.totMi)+' <small>mi</small>';
+  $('mTotTime').textContent = fmtHrs(R.totHr);
+  $('mFinish').textContent = fmtHrs(R.maxHr);
+  $('mLabor').textContent = money(R.labor);
+  $('mGas').textContent = money(R.gas);
+  $('mTotal').textContent = money(R.total);
+
+  const rate=+$('rate').value||0, gasPrice=+$('gas').value||0, mpg=+$('mpg').value||1;
+  const host=$('tickets'); host.style.display='block'; $('placeholder').style.display='none';
+  host.innerHTML='';
+  // traffic + data-source context summary
+  const tline=document.createElement('div'); tline.className='trafsum';
+  const trafTxt = R.manual
+    ? `Traffic (manual): outbound <b>×${R.depF.toFixed(2)}</b> · return <b>×${R.retF.toFixed(2)}</b>`
+    : `Traffic at ${clock12(parseHour(R.departTime))} out / ${clock12(parseHour(R.returnTime))} back: outbound <b>×${R.depF.toFixed(2)}</b> · return <b>×${R.retF.toFixed(2)}</b>`;
+  const srcTxt = R.matMode==='estimate'
+    ? `<br><span class="est">Estimated distances</span> — too many stops for the road-network matrix (cap ${OSRM_MAX}). Calibrated from a live OSRM sample: road factor ×${R.matFactor.toFixed(2)}, ~${(R.matSpeed*2.23694).toFixed(0)} mph.`
+    : '';
+  tline.innerHTML = trafTxt + srcTxt;
+  host.appendChild(tline);
+  const collapse = R.routes.length>0 && R.routes.some(rt=>rt.seq.length>14);
+  R.routes.forEach((rt,ri)=>{
+    const col=COLORS[ri%COLORS.length];
+    const rLabor=rt.hours*rate, rGas=(rt.fuelMiles/mpg)*gasPrice;
+    const card=document.createElement('div'); card.className='ticket'; card.style.setProperty('--rc',col);
+    let stops;
+    if(collapse && rt.seq.length>14){
+      const head=rt.seq.slice(0,5).map((idx,pos)=>`<li>${esc(state.jobs[idx].name)}${pos===0?' <em>(drive out)</em>':''}<span class="leg">${fmtMi(rt.legs[pos])} mi</span></li>`).join('');
+      const tail=`<li>${esc(state.jobs[rt.seq[rt.seq.length-1]].name)}<span class="leg">${fmtMi(rt.legs[rt.seq.length-1])} mi</span></li>`;
+      stops=head+`<li class="more">… ${rt.seq.length-6} more stops …</li>`+tail;
+    } else {
+      stops=rt.seq.map((idx,pos)=>{
+        const tag = pos===0 ? ' <em>(drive out)</em>' : '';
+        return `<li>${esc(state.jobs[idx].name)}${tag}<span class="leg">${fmtMi(rt.legs[pos])} mi</span></li>`;
+      }).join('');
+    }
+    const bufLine = rt.buffer>0 ? `<div class="ret">＋ round-trip buffer · ${fmtHrs(rt.buffer)}</div>` : '';
+    card.innerHTML=`
+      <div class="th"><span class="badge">CREW ${ri+1}</span><span class="cnt">${rt.seq.length} stop${rt.seq.length>1?'s':''}</span></div>
+      <div class="stats">
+        <div class="st"><span>Miles</span><b>${fmtMi(rt.miles)}</b></div>
+        <div class="st"><span>Total time</span><b>${fmtHrs(rt.hours)}</b></div>
+        <div class="st"><span>Labor</span><b>${money(rLabor)}</b></div>
+        <div class="st"><span>Gas</span><b>${money(rGas)}</b></div>
+      </div>
+      <ol>${stops}</ol>
+      <div class="ret">↩ return to base · ${fmtMi(rt.backMiles)} mi · ${fmtHrs(rt.backHours)}</div>
+      ${bufLine}`;
+    host.appendChild(card);
+  });
+}
+function clearResult(){
+  state.result=null; lineLayer.clearLayers();
+  $('readout').classList.add('idle'); $('tickets').style.display='none';
+  $('placeholder').style.display='block';
+}
+
+/* ---------------- Wire up UI ---------------- */
+$('baseFind').onclick=async()=>{ const q=$('baseAddr').value.trim(); if(!q)return;
+  toast('Looking up address…'); try{ const g=await geocode(q); setBase(g.lat,g.lng,g.name); hideToast(); }
+  catch(e){ toast(e.message,false,true); setTimeout(hideToast,2600);} };
+$('baseSet').onclick=()=>{ const la=+$('baseLat').value, ln=+$('baseLng').value;
+  if(isFinite(la)&&isFinite(ln)) setBase(+la.toFixed(6),+ln.toFixed(6),`Base (${la}, ${ln})`); };
+$('basePick').onclick=()=>startPick('base');
+
+$('jobFind').onclick=async()=>{ const q=$('jobAddr').value.trim(); if(!q)return;
+  toast('Looking up address…'); try{ const g=await geocode(q); addJob(g.lat,g.lng,g.name); $('jobAddr').value=''; hideToast(); }
+  catch(e){ toast(e.message,false,true); setTimeout(hideToast,2600);} };
+$('jobSet').onclick=()=>{ const la=+$('jobLat').value, ln=+$('jobLng').value;
+  if(isFinite(la)&&isFinite(ln)){ addJob(+la.toFixed(6),+ln.toFixed(6),`Stop (${la}, ${ln})`); $('jobLat').value='';$('jobLng').value='';} };
+$('jobPick').onclick=()=>startPick('job');
+
+// ---- Bulk add: paste many addresses / coords ----
+function parseCoordLine(line){
+  // accepts "lat,lng" or "lat lng" (also tolerates a leading label before a comma-free coord pair is ambiguous, so require comma or whitespace-separated numbers only)
+  const m=line.match(/^\s*(-?\d{1,3}(?:\.\d+)?)\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+  if(!m) return null;
+  const la=+m[1], ln=+m[2];
+  if(la>=-90&&la<=90&&ln>=-180&&ln<=180) return {lat:+la.toFixed(6), lng:+ln.toFixed(6)};
+  return null;
+}
+async function bulkAdd(){
+  const raw=$('bulkText').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  if(!raw.length) return;
+  $('bulkAdd').disabled=true;
+  const failed=[]; let added=0; let firstGeocode=true; let pendingRender=0;
+  const pushJob=(lat,lng,name)=>{ state.jobs.push({id:uid++,lat,lng,name}); added++; pendingRender++;
+    if(pendingRender>=50){ renderPoints(); pendingRender=0; } };
+  for(let i=0;i<raw.length;i++){
+    const line=raw[i];
+    const coord=parseCoordLine(line);
+    if(coord){ pushJob(coord.lat, coord.lng, `Stop (${coord.lat}, ${coord.lng})`); continue; }
+    // address -> geocode, throttled to ~1/sec for Nominatim
+    toast(`Looking up ${i+1} of ${raw.length}…`);
+    if(!firstGeocode) await new Promise(r=>setTimeout(r,1100));
+    firstGeocode=false;
+    try{ const g=await geocode(line); pushJob(g.lat,g.lng,g.name); }
+    catch(e){ failed.push(line); }
+  }
+  renderPoints(); clearResult(); drawMarkers(); fitMap(); // render once at the end
+  $('bulkAdd').disabled=false;
+  $('bulkText').value = failed.join('\n');   // leave only the lines that failed
+  if(failed.length){ toast(`Added ${added}. ${failed.length} couldn't be found — left in the box.`, false, true); setTimeout(hideToast,4200); }
+  else { toast(`Added ${added} stop${added!==1?'s':''}.`, false, false); setTimeout(hideToast,2200); }
+}
+$('bulkAdd').onclick=bulkAdd;
+$('bulkClear').onclick=()=>{ $('bulkText').value=''; };
+
+$('baseAddr').addEventListener('keydown',e=>{if(e.key==='Enter')$('baseFind').click();});
+$('jobAddr').addEventListener('keydown',e=>{if(e.key==='Enter')$('jobFind').click();});
+
+function startPick(kind){
+  state.pick=kind; $('modebar').classList.add('show');
+  $('modeText').textContent = kind==='base' ? 'Click the map to place the base' : 'Click the map to drop job stops (multiple OK)';
+}
+$('modeDone').onclick=()=>{ state.pick=null; $('modebar').classList.remove('show'); };
+
+document.querySelectorAll('#objSeg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#objSeg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+});
+document.querySelectorAll('#balSeg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#balSeg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+});
+
+// ---- Schedule & traffic UI ----
+function updateTrafficNote(){
+  const manual=$('manualTraffic').checked;
+  $('manualRow').style.display = manual ? 'flex' : 'none';
+  const tf=trafficFactors();
+  const stale = state.result ? ' Re-run Optimize to apply.' : '';
+  if(manual){
+    $('trafficNote').innerHTML = `Scaling free-flow drive times by your multipliers: outbound <b>×${tf.dep.toFixed(2)}</b>, return <b>×${tf.ret.toFixed(2)}</b>. Heavier traffic raises drive time, labor, and fuel.${stale}`;
+  } else {
+    const dh=parseHour($('departTime').value), rh=parseHour($('returnTime').value);
+    $('trafficNote').innerHTML = `Estimated Bay-Area traffic: leaving ${clock12(dh)} → outbound <b>×${tf.dep.toFixed(2)}</b>, returning ${clock12(rh)} → return <b>×${tf.ret.toFixed(2)}</b>. These scale drive time, labor, and fuel (and the time-based optimization).${stale}`;
+  }
+}
+['departTime','returnTime','depFactor','retFactor'].forEach(id=>$(id).addEventListener('input',updateTrafficNote));
+$('manualTraffic').addEventListener('change',updateTrafficNote);
+updateTrafficNote();
+$('run').onclick=optimize;
+$('compare').onclick=compareCrews;
+$('compareClose').onclick=()=>$('compareModal').classList.remove('show');
+$('compareModal').addEventListener('click',e=>{ if(e.target===$('compareModal')) $('compareModal').classList.remove('show'); });
+$('clear').onclick=()=>{ state.base=null; state.jobs=[]; clearResult(); renderPoints(); drawMarkers(); };
+['rate','gas','mpg','rttbuf'].forEach(id=>$(id).addEventListener('change',()=>{ if(state.result){ recost(); } }));
+
+function recost(){ // recompute cost + round-trip buffer without re-routing
+  const R=state.result; const rate=+$('rate').value||0, gasPrice=+$('gas').value||0, mpg=+$('mpg').value||1;
+  const rttBuf=Math.max(0, +$('rttbuf').value||0)/60;
+  let maxHr=0;
+  R.routes.forEach(rt=>{ rt.buffer=rttBuf; rt.hours=rt.driveHours+rttBuf; if(rt.hours>maxHr)maxHr=rt.hours; });
+  R.totBuf=rttBuf*R.routes.length;
+  R.totHr=R.totDriveHr+R.totBuf;
+  R.maxHr=maxHr;
+  R.labor=R.totHr*rate; R.gas=(R.totFuelMi/mpg)*gasPrice; R.total=R.labor+R.gas; renderResult();
+}
+
+$('example').onclick=()=>{
+  state.base=null; state.jobs=[]; clearResult();
+  setBase(37.8044,-122.2712,'Oakland — Base');
+  [['San Francisco — Civic Center',37.7793,-122.4193],['Berkeley',37.8715,-122.2730],
+   ['Richmond',37.9358,-122.3477],['Fremont',37.5485,-121.9886],['Hayward',37.6688,-122.0808],
+   ['San Mateo',37.5630,-122.3255],['Palo Alto',37.4419,-122.1430],['San Jose — Downtown',37.3382,-121.8863],
+   ['Walnut Creek',37.9101,-122.0652],['Daly City',37.6879,-122.4702],['Redwood City',37.4852,-122.2364],
+   ['Mountain View',37.3861,-122.0839]].forEach(([nm,la,ln])=>addJob(la,ln,nm));
+};
+
+// ---- Connection test ----
+async function testConnection(){
+  const b=$('frameBanner'); b.style.display='block'; b.className='banner';
+  b.innerHTML='Testing connection to the routing &amp; address servers…';
+  let osrmOk=false, nomOk=false;
+  try{
+    const r=await fetch('https://router.project-osrm.org/route/v1/driving/-122.27,37.80;-122.42,37.77?overview=false');
+    const j=await r.json(); osrmOk = j.code==='Ok';
+  }catch(e){}
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=Oakland');
+    const j=await r.json(); nomOk = Array.isArray(j) && j.length>0;
+  }catch(e){}
+  if(osrmOk && nomOk){
+    b.className='banner ok';
+    b.innerHTML='<b>Connected.</b> Routing and address lookup are both reachable — you\u2019re good to optimize.';
+  } else {
+    b.className='banner';
+    const reason = IN_FRAME
+      ? 'This is running in a preview pane, which blocks outside connections. Download the file and open it in its own browser tab.'
+      : 'The servers didn\u2019t respond. Check your connection, any VPN or ad-blocker, or try again shortly (the free OSRM server is occasionally busy).';
+    b.innerHTML='<b>Couldn\u2019t connect.</b> Routing: '+(osrmOk?'ok':'failed')+' &middot; Address lookup: '+(nomOk?'ok':'failed')+'. '+reason;
+  }
+}
+$('conntest').onclick=testConnection;
+if(IN_FRAME){ $('frameBanner').style.display='block'; }
+
+renderPoints();
+</script>
+</body>
+</html>
